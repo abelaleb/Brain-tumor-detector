@@ -9,6 +9,9 @@ import os
 import gdown
 
 from model.combined_model import CombinedModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -18,12 +21,12 @@ app.add_middleware(
     allow_origins=["*"],  # You can restrict to your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
 # Download model from Google Drive if not present
 MODEL_PATH = "model/model.pth"
-MODEL_URL = "https://drive.google.com/uc?id=15SOuCcKOZJjPJAolTbItMk0WgiNKaA3I"
+MODEL_URL = os.getenv("MODEL_URL")
 
 os.makedirs("model", exist_ok=True)
 
