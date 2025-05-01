@@ -1,26 +1,42 @@
-#main.py
-
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import torch
 from torchvision import transforms
 import io
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import gdown
 
 from model.combined_model import CombinedModel
 
-
 app = FastAPI()
 
-# Device
+# CORS for frontend communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can restrict to your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Download model from Google Drive if not present
+MODEL_PATH = "model/model.pth"
+MODEL_URL = "https://drive.google.com/uc?id=15SOuCcKOZJjPJAolTbItMk0WgiNKaA3I"
+
+os.makedirs("model", exist_ok=True)
+
+if not os.path.exists(MODEL_PATH):
+    print("Downloading model...")
+    gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+
+# Load device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load model
 model = CombinedModel()
-model.load_state_dict(torch.load("model/model.pth", map_location=device))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
 model.to(device)
 model.eval()
 
