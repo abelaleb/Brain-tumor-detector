@@ -7,46 +7,57 @@ from torchvision import transforms
 import io
 import os
 import gdown
-
-from model.combined_model import CombinedModel
 from dotenv import load_dotenv
+
+# Import your model classes
+from app.models.brain_tumor_model import BrainTumorModel
+from app.models.stroke_model import StrokeModel
+from app.models.parkinson_model import ParkinsonModel
+from app.models.hemorrhagic_model import HemorrhagicModel
 
 load_dotenv()
 
 app = FastAPI()
 
-# CORS for frontend communication
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict to your frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-# Download model from Google Drive if not present
-MODEL_PATH = "model/model.pth"
-MODEL_URL = os.getenv("MODEL_URL")
-
-os.makedirs("model", exist_ok=True)
-
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model...")
-    gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-
-# Load device
+# --- Model Loading ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load model
-model = CombinedModel()
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-model.to(device)
-model.eval()
+def load_model(model_class, model_path_env_var):
+    MODEL_PATH = os.getenv(model_path_env_var)
+    if not os.path.exists(MODEL_PATH):
+        print(f"Downloading {model_path_env_var} model...")
+        gdown.download(os.getenv(f"{model_path_env_var}_URL"), MODEL_PATH, quiet=False)
+    
+    model = model_class()
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.to(device)
+    model.eval()
+    return model
 
-# Class names
-condition_names = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary']
+models = {
+    "brain-tumor": load_model(BrainTumorModel, "BRAIN_TUMOR_MODEL_PATH"),
+    "stroke": load_model(StrokeModel, "STROKE_MODEL_PATH"),
+    "parkinson": load_model(ParkinsonModel, "PARKINSON_MODEL_PATH"),
+    "hemorrhagic": load_model(HemorrhagicModel, "HEMORRHAGIC_MODEL_PATH"),
+}
 
-# Image transform
+class_names = {
+    "brain-tumor": ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary'],
+    "stroke": ['Bleeding', 'Ischemia', 'Normal'],
+    "parkinson": ["Parkinson's", "Normal"],
+    "hemorrhagic": ["Hemorrhagic", "Normal"],
+}
+
+# Image Transformations
 transform = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -56,17 +67,25 @@ transform = transforms.Compose([
 
 @app.get("/")
 def root():
-    return {"message": "Brain Tumor Classification API is running"}
+    return {"message": "NeuroScopeAI Diagnostics API is running"}
 
-@app.post("/predict/")
-async def predict(file: UploadFile = File(...)):
+@app.post("/predict/{model_type}")
+async def predict(model_type: str, file: UploadFile = File(...)):
+    if model_type not in models:
+        return JSONResponse(status_code=404, content={"message": "Model not found"})
+
     contents = await file.read()
     image = Image.open(io.BytesIO(contents)).convert("RGB")
     image = transform(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
+        model = models[model_type]
         outputs = model(image)
-        _, predicted = torch.max(outputs, 1)
-        prediction = condition_names[predicted.item()]
-
-    return JSONResponse(content={"prediction": prediction})
+        probabilities = torch.nn.functional.softmax(outputs, dim=1)
+        confidence, predicted_idx = torch.max(probabilities, 1)
+        prediction = class_names[model_type][predicted_idx.item()]
+        
+    return JSONResponse(content={
+        "prediction": prediction,
+        "confidence": round(confidence.item() * 100, 2)
+    })

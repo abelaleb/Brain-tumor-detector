@@ -1,15 +1,17 @@
-#combined_model.py
-
+# hemorrhagic
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-# Define the same model class
-class CombinedModel(nn.Module):
+class HemorrhagicModel(nn.Module):
+    """
+    Model for classifying hemorrhagic conditions into 2 classes:
+    Hemorrhagic, Normal.
+    """
     def __init__(self):
-        super().__init__()
-        self.resnet = models.resnet18(pretrained=True)
+        super(HemorrhagicModel, self).__init__()
+        self.resnet = models.resnet18(weights=True)
         for param in self.resnet.parameters():
             param.requires_grad = False
 
@@ -39,7 +41,7 @@ class CombinedModel(nn.Module):
         self.bn4 = nn.BatchNorm2d(256)
         self.dropout = nn.Dropout(0.5)
         self.fc1 = nn.Linear(50688, 512)
-        self.fc2 = nn.Linear(512, 4)
+        self.fc2 = nn.Linear(512, 2)
 
     def forward(self, x):
         resnet_features = self.resnet(x)
